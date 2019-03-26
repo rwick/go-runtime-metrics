@@ -69,6 +69,8 @@ type Config struct {
 
 	// Default is DefaultLogger which exits when the library encounters a fatal error.
 	Logger Logger
+
+	Timeout time.Duration
 }
 
 func (config *Config) init() (*Config, error) {
@@ -119,6 +121,7 @@ func RunCollector(config *Config) (err error) {
 		Addr:     "http://" + config.Host,
 		Username: config.Username,
 		Password: config.Password,
+		Timeout:  config.Timeout,
 	})
 
 	if err != nil {
@@ -126,7 +129,7 @@ func RunCollector(config *Config) (err error) {
 	}
 
 	// Ping InfluxDB to ensure there is a connection
-	if _, _, err := clnt.Ping(5 * time.Second); err != nil {
+	if _, _, err := clnt.Ping(config.Timeout); err != nil {
 		return errors.Wrap(err, "failed to ping influxdb client")
 	}
 
@@ -134,7 +137,7 @@ func RunCollector(config *Config) (err error) {
 	_, err = queryDB(clnt, fmt.Sprintf("CREATE DATABASE \"%s\"", config.Database))
 
 	if err != nil {
-		config.Logger.Fatalln(err)
+		config.Logger.Println(err)
 	}
 
 	_runStats := &runStats{
@@ -177,7 +180,7 @@ func (r *runStats) onNewPoint(fields collector.Fields) {
 	pt, err := client.NewPoint(r.config.Measurement, fields.Tags(), fields.Values(), time.Now())
 
 	if err != nil {
-		r.logger.Fatalln(errors.Wrap(err, "error while creating point"))
+		r.logger.Println(errors.Wrap(err, "error while creating point"))
 	}
 
 	r.pc <- pt
@@ -191,7 +194,7 @@ func (r *runStats) newBatch() (bp client.BatchPoints, err error) {
 	})
 
 	if err != nil {
-		r.logger.Fatalln(errors.Wrap(err, "could not create BatchPoints"))
+		r.logger.Println(errors.Wrap(err, "could not create BatchPoints"))
 	}
 
 	return
@@ -209,7 +212,7 @@ func (r *runStats) loop(interval time.Duration) {
 			}
 
 			if err := r.client.Write(r.points); err != nil {
-				r.logger.Fatalln(errors.Wrap(err, "could not write points to InfluxDB"))
+				r.logger.Println(errors.Wrap(err, "could not write points to InfluxDB"))
 				continue
 			}
 
@@ -218,7 +221,7 @@ func (r *runStats) loop(interval time.Duration) {
 			bp, err := r.newBatch()
 
 			if err != nil {
-				r.logger.Fatalln(errors.Wrap(err, "could not create BatchPoints"))
+				r.logger.Println(errors.Wrap(err, "could not create BatchPoints"))
 				continue
 			}
 
